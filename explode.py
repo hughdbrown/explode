@@ -1,6 +1,18 @@
+#!/usr/bin/env python
 """
 The function 'explode' produces an animation of exploding bombs.
 """
+
+class ForceException(Exception):
+    def __init__(self, force):
+        msg = "The value of force is {0}. Only a force between 1 and 10 inclusive is permitted.".format(force)
+        super(ForceException, self).__init__(msg)
+
+
+class ChamberException(Exception):
+    def __init__(self, chamber_size):
+        msg = "The length of 'bombs' is {0}. The string must be 1 to 50 characters long.".format(chamber_size)
+        super(ChamberException, self).__init__(msg)
 
 
 def explode(bombs, force):
@@ -19,44 +31,46 @@ def explode(bombs, force):
     @return: A list of strings, each representing a unit of time, starting
              with the initial input string and ending when the chamber is
              empty.
+    >>> explode('.....B.....', 1)
+    ['.....B.....', '....<.>....', '...<...>...', '..<.....>..', '.<.......>.', '<.........>', '...........']
+    >>> explode('B....', 1)
+    ['B....', '.>...', '..>..', '...>.', '....>', '.....']
+    >>> explode('B...B', 1)
+    ['B...B', '.>.<.', '..X..', '.<.>.', '<...>', '.....']
+    >>> explode('B...B.', 1)
+    ['B...B.', '.>.<.>', '..X...', '.<.>..', '<...>.', '.....>', '......']
+    >>> explode('B..B.', 1)
+    ['B..B.', '.><.>', '.<>..', '<..>.', '....>', '.....']
     """
     # Check that the input parameters obey the required constraints.
     chamber_size = len(bombs)
-    if chamber_size < 1 or chamber_size > 50:
-        raise Exception("The length of 'bombs' is '%s'. The string must be 1 "
-                        "to 50 characters long." % len(bombs))
-    if force < 1 or force > 10:
-        raise Exception("The value of force is '%s'. Only a force between 1 " \
-                        "and 10 inclusive is permitted." % force)
+    if not (1 <= chamber_size <= 50):
+        raise ChamberException(chamber_size)
+    elif not (1 <= force <= 10):
+        raise ForceException(force)
+    return list(_generate_animations(bombs, force))
 
-    # Initialize our animation sequence to start with the input string.
-    animation = [bombs]
 
+def _generate_animations(bombs, force):
     # Keep track of the locations of left-moving and right-moving shrapnel
     # in their own sets, initializing the location of each piece to the
     # location of the bomb from which they come.
+    yield bombs
+    chamber_size = len(bombs)
     left, right = _initialize_shrapnel_locations(bombs)
-
-    chamber = None
-    EMPTY_CHAMBER = '.' * chamber_size
-    # Until the chamber is empty, we contine updating our animation.
-    while chamber != EMPTY_CHAMBER:
+    # Update the animation until no more shrapnel is flying.
+    while left or right:
+        left, right = _update_shrapnel(left, right, force, chamber_size)
         # Update the locations of the shrapnel.
-        left, right = _update_shrapnel(left, right, force)
-
-        # Build the updated picture of the chamber as a list.
-        chamber = []
-        for location in xrange(chamber_size):
-            if location in left:
-                chamber.append('X' if location in right else '<')
-            else:
-                chamber.append('>' if location in right else '.')
-
+        chamber = ['.'] * chamber_size
+        for left_shrapnel in left:
+            chamber[left_shrapnel] = '<'
+        for right_shrapnel in right:
+            chamber[right_shrapnel] = '>'
+        for both_shrapnel in left & right:
+            chamber[both_shrapnel] = 'X'
         # Join the chamber into a string and add it to the animation.
-        chamber = "".join(chamber)
-        animation.append(chamber)
-
-    return animation
+        yield "".join(chamber)
 
 
 def _initialize_shrapnel_locations(bombs):
@@ -71,31 +85,25 @@ def _initialize_shrapnel_locations(bombs):
     @return: Two identical sets, each with the locations in the input string
              of the bombs.
     """
-    left = set([])
-    right = set([])
-    for index, char in enumerate(bombs):
-        if char == 'B':
-            left.add(index)
-            right.add(index)
-        elif char != '.':
-            raise Exception("Improper string input 'bombs'.")
-    return left, right
+    if set(bombs) - set('.B'):
+        raise Exception("Improper string input 'bombs'.")
+    left = set(index for index, char in enumerate(bombs) if char == 'B')
+    return left, left.copy()
 
 
-def _update_shrapnel(left, right, force):
+def _update_shrapnel(left, right, force, chamber_size):
     """
     Given two sets with the locations of left and right moving shrapnel,
     returns two sets with the updated locations after they have moved
     a distance given by the parameter 'force'.
     """
-    # Update the locations of left-moving shrapnel.
-    nextleft = set([])
-    for shrapnel in left:
-        nextleft.add(shrapnel - force)
-
-    # Update the locations of right-moving shrapnel.
-    nextright = set([])
-    for shrapnel in right:
-        nextright.add(shrapnel + force)
-
+    def _updated_shrapnel(series):
+        return set(shrapnel for shrapnel in series if 0 <= shrapnel < chamber_size)
+    nextleft = _updated_shrapnel(shrapnel - force for shrapnel in left)
+    nextright = _updated_shrapnel(shrapnel + force for shrapnel in right)
     return nextleft, nextright
+
+
+if __name__ == '__main__':
+    import doctest
+    doctest.testmod()
